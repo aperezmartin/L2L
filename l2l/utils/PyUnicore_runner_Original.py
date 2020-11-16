@@ -2,6 +2,14 @@ from base64 import b64encode
 import pyunicore.client as unicore_client
 import json
 import os
+import logging
+
+logger = logging.getLogger("JUBERunner")
+
+class PyUnicoreRunner():
+    def __init__(self, token):
+        self.token = token
+
 
 def showSources(client):
     storages = client.get_storages()
