@@ -13,10 +13,67 @@ from l2l.utils.trajectory import Trajectory
 logger = logging.getLogger("utils.Environment_UNICORE")
 
 class Utils():
+    #Different access require a different token and the way to call a job
+    ACCESS_JUDOOR=0
+    ACCESS_COLLAB=1
 
     @staticmethod
     def generateToken(judooraccount,juddorpassword):
         return b64encode(b"judooraccount:juddorpassword").decode("ascii")
+
+    @staticmethod
+    def arrayToString(array):
+        return ' '.join(map(str, array))
+
+    @staticmethod
+    def generate_L2L_launcher(variables, launcher):
+        filename = "experiment.sh"
+        try:
+            print("Generating experiment for L2L", filename)
+
+            new_local_path = os.path.join(variables["destiny_project_path"],
+                                          variables["destiny_relative_subfolder"])
+            # What the script does
+            with open(os.path.join(variables["local_path"], filename), 'w') as file:
+                file.write(
+                'cd ' + new_local_path + ";"
+                'python '+ launcher +' 2>stderr.log$(date "+%Y%m%d") 1>stdout.log$(date "+%Y%m%d") ;\n')
+#                'cd L2L/bin ;\n' +
+            # Steps to launch the script
+            steps = Utils.arrayToString([" cd " +new_local_path+";",
+                    "chmod 764 " + filename + ";",
+                    "bash " + filename + ";",
+                    "echo done!"])
+            print(filename,"Steps:",steps)
+            return filename, steps
+        except Exception as e:
+            raise e
+
+    @staticmethod
+    def generate_L2L_installation(variables):
+        filename = "installation.sh"
+        try:
+            print ("Generating installation for L2L", filename)
+
+            # What the script does
+            with open(os.path.join(variables["local_path"], filename), 'w') as file:
+                file.write('#!/bin/bash \n' +
+                    'git clone https://github.com/aperezmartin/L2L.git ; \n' +
+                    'cd L2L ;\n' +
+                    'pip3 install -r requirements.txt ;\n' +
+                    'pip3 install http://apps.fz-juelich.de/jsc/jube/jube2/download.php?version=latest ;\n' +
+                    'python setup.py install ;\n' +
+                    'today=$(date "+%Y-%m-%d %H:%M:%S") ;\n'+
+                    'cd .. ;\n' +
+                    'echo "$today - '+filename+' finished successfully! " >> control.log$(date "+%Y%m%d") ;\n'+
+                    '2>stderr.log$(date "+%Y%m%d") 1>stdout.log$(date "+%Y%m%d")')
+
+            # Steps to launch the script
+            steps = Utils.generate_steps_bashscript(variables, filename)
+
+            return filename, steps
+        except Exception as e:
+            raise e
 
     @staticmethod
     def generate_StandCompiler_BashFile(variables):
@@ -43,43 +100,56 @@ class Utils():
                 print(" - Created", filename)
                 print(" - Created steps")
 
+                # set of instructions to launch the bash file
                 return [" cd " + variables["destiny_working_path"] + ";",
-                      "chmod 764 compilator.sh;",
-                      "./compilator.sh;",
+                      "chmod 764 "+filename+";",
+                      "./"+filename+";",
                       "chmod 764 " + variables["destiny_scriptname"]]
         except Exception as e:
             raise e
 
     @staticmethod
     def generate_PythonCompiler(variables):
+        #TODO: set values
         #local_path, destiny_working_path, destiny_project_path, destiny_user_account, destiny_scriptname
         return [" cd " + variables["destiny_project_path"] + ";",
-                "date >> text; echo done"]
+                "date >> text; echo done!"]
+
+    @staticmethod
+    def generate_steps_bashscript(variables, filename):
+        return Utils.arrayToString([" cd " + variables["destiny_project_path"] + ";",
+                    "chmod 764 " + filename + ";",
+                    "bash " + filename + ";",
+                    "echo done!"])
 
 class Environment_UNICORE():
 
-    def __init__(self,token, serverToConnect, local_path,
-                 destiny_working_path, destiny_project_path, destiny_libraries_path,
+    def __init__(self,token,methodToAccess, serverToConnect, local_path,
+                 destiny_project_path,destiny_relative_subfolder,
                  **args):
-        #keyword_args['filename']
-        self.urls = dict()
-        self.conn_info= dict()
-        self.script_info = dict()
+
+        self.urls,self.conn_info,self.job_info,self.script_info = {},{},{},{}
 
         # Required for a sever connection
         self.conn_info["token"] = token
+        self.conn_info["methodToAccess"] = methodToAccess
         self.conn_info["serverToConnect"] = serverToConnect
+        if "serverToRegister" in args.keys():
+            self.conn_info["serverToRegister"] = args["serverToRegister"]
+        else:
+            self.conn_info["serverToRegister"] ="https://zam2125.zam.kfa-juelich.de:9112/HBP/rest/registries/default_registry"
 
         # URLs for the client side
         self.urls["local_path"] = local_path
 
         # URLs for the server side
-        #self.urls["destiny_working_path"] = destiny_working_path #For downloading
-        #self.urls["destiny_scriptname"] = destiny_scriptname
-        #self.urls["destiny_user_account"] = destiny_user_account
         self.urls["destiny_project_path"] = destiny_project_path
-        #self.urls["destiny_project_url"] = destiny_project_url
-        self.urls["destiny_libraries_path"] = destiny_libraries_path
+        self.urls["destiny_relative_subfolder"] = destiny_relative_subfolder
+        self.urls["destiny_parent_project"] = self.urls["destiny_project_path"].split('/')[-1]
+        self.urls["destiny_libraries_path"] = args["destiny_libraries_path"] if "destiny_libraries_path" in args.keys() else None
+
+        # Parameter for the Job execution
+        self.job_info["serverArgs"]= args["serverArgs"] if "serverArgs" in args.keys() else {}
 
         # Script to run on the server
         self.script_info["language"] = args["language"] if "language" in args.keys() else "python"
@@ -87,12 +157,14 @@ class Environment_UNICORE():
         self.script_info["parameters"] = args["script_parameters"] if "script_parameters" in args.keys() else None
         self.script_info["needcompiler"] = args["needcompiler"] if "needcompiler" in args.keys() else True
 
-
 class PyUnicoreManager(object):
-    def __init__(self, environment,  **keyword_args):
+    def __init__(self, environment, verbose=False,  **keyword_args):
+        self.verbose = verbose
         self.env = environment
         self.transport = unicore_client.Transport(self.env.conn_info["token"], oidc=False)
-        self.client = unicore_client.Client(self.transport, self.env.conn_info["serverToConnect"])
+        self.registry = unicore_client.Registry(self.transport, self.env.conn_info["serverToRegister"])
+        self.site = self.registry.site(self.env.conn_info["serverToConnect"])
+        self.client = unicore_client.Client(self.transport, self.site.site_url)
 
         if self.env.conn_info["token"] is None:
             print("Token is required!")
@@ -100,7 +172,7 @@ class PyUnicoreManager(object):
         if 'trajectory' in keyword_args:
             self.trajectory = keyword_args['trajectory']
 
-    def getSesources(self):
+    def getStorage(self):
         return self.client.get_storages()
 
     def getJobs(self, status=None):
@@ -117,21 +189,20 @@ class PyUnicoreManager(object):
     def getSites(self):
         return unicore_client.get_sites(self.transport)
 
-    def createJob(self, list_of_steps):
-        job = {}
-
+    def createJob(self, list_of_steps, job_args):
         executable = ""
-        print("Executing commands...")
-        for item in list_of_steps:
-            print(" -", item)
-            executable += item
-        print("")
+        if(self.verbose):
+            print("Executing commands...")
+            for item in list_of_steps.split(";"):
+                print(" -", item)
+            print("")
 
-        job['Executable'] = "cd /p/project/cslns/collab; date >> text ;echo done"#executable
-
+        job = {}
+        job['Executable'] = list_of_steps
 
         #No job type means launching job in the Bach System
-        #job['Job type'] = "interactive"
+        if "jobType" in self.env.job_info["serverArgs"].keys():
+            job['Job type'] = self.env.job_info["serverArgs"]["jobType"] #"interactive"
 
         # data stage in - TBD
         job['Imports'] = []
@@ -140,18 +211,20 @@ class PyUnicoreManager(object):
         job['Exports'] = []
 
         # Resources - TBD
-        job['Resources'] = {}
-        #    "Nodes" : "1",
-        #    "Runtime" : "10",
-        #}
+        if "Resources" in self.env.job_info["serverArgs"].keys():
+            job['Resources'] = self.env.job_info["serverArgs"]["Resources"]
+        else:
+            job['Resources'] = []
 
         return job
 
+    """
+    TODO: Adapt again to the stan executions
     def run(self, stepsToExcute):
 
         # List of step to execute the job
         executable = str()
-
+        
         # Generate the compiler and return list of command to run it on the server. Before uploading files
         if self.env.script_info["needcompiler"]:
             steps=""
@@ -163,70 +236,106 @@ class PyUnicoreManager(object):
         else:
             executable += ' '.join(map(str, stepsToExcute))
 
-        # Loading local files
-        #print("Loading local folder..", self.env.urls["local_path"])
-        #filesToUpload = os.listdir(self.env.urls["local_path"])
-        #for file in filesToUpload:
-        #    print(" - Loaded file", file)
+        """
 
-        #print("exit")
-        #exit(1)
-        # Uploading files to the server
-        #storage = unicore_client.Storage(self.transport, self.env.urls["destiny_project_url"])
-        #print("Uploading...", self.env.urls["destiny_working_path"])
-        #for file in filesToUpload:
-        #    storage.upload(os.path.join(self.env.urls["local_path"], file), destination=os.path.join(self.env.urls["destiny_working_path"], file))
-            #print(" - Uploaded file", file)
-
-
-        # Add steps to the job execution
-
-
-
-        # Run a job
-        if len(executable) == 0:
-            print("No instructions to execute")
-            return
-
-        print("Executing a job...")
-        job = self.createJob(list_of_steps=executable)
-        cmd_job = self.client.new_job(job_description=job)
-
-        # Wait until the job finishes
-        print(cmd_job.properties['status'])
-        cmd_job.poll()
-        print('Job finished!')
-
-        wd = cmd_job.working_dir
-        dict= {}
-        dict["stderr"] = [x.decode('utf8') for x in wd.stat("/stderr").raw().readlines()]
-        dict["stdout"] = [x.decode('utf8') for x in wd.stat("/stdout").raw().readlines()]
-        return dict
-
-    def one_run(self, executable, filesToUpload=[]):
-        if len(executable) == 0:
-            print("No instructions to execute")
-            return
-
-        print("Executing a job...")
-        job = self.createJob(list_of_steps=executable)
-        cmd_job = self.client.new_job(job_description=job, inputs=filesToUpload)
+    def __run_job(self,job):
+        cmd_job = None
+        if Utils.ACCESS_JUDOOR == self.env.conn_info["methodToAccess"]:
+            cmd_job = self.client.new_job(job_description=job)#, inputs=filesToUpload
+        elif Utils.ACCESS_COLLAB == self.env.conn_info["methodToAccess"]:
+            cmd_job = self.site.new_job(job_description=job)#, inputs=filesToUpload
 
         # Wait until the job finishes
         print("Status...", cmd_job.properties['status'])
         cmd_job.poll()
         print('Job finished!')
 
+        result_job = {}
         wd = cmd_job.working_dir
-        dict = {}
-        dict["stderr"] = [x.decode('utf8') for x in wd.stat("/stderr").raw().readlines()]
-        dict["stdout"] = [x.decode('utf8') for x in wd.stat("/stdout").raw().readlines()]
-        return dict
+        result_job["stderr"] = [x.decode('utf8') for x in wd.stat("/stderr").raw().readlines()]
+        result_job["stdout"] = [x.decode('utf8') for x in wd.stat("/stdout").raw().readlines()]
+        return cmd_job, result_job
+
+    def __uploadFiles(self, filesToUpload, server_point, relative_subfolder):
+
+        #Check if all files can be reacheabled
+        list=[]
+        for filename in filesToUpload:
+            list.append(os.path.join(self.env.urls["local_path"], filename))
+        if len(list)==0:
+            raise "Nothing to upload"
+
+        #Get the object Storage
+        storage=None
+        for obj in self.site.get_storages():
+            if obj.storage_url.endswith(server_point):
+                storage= obj
+
+        # Uploading files
+        print("Uploading to ", storage.storage_url)
+
+        #destination="collab/filename"
+        for filename in filesToUpload:
+            storage.upload(os.path.join(self.env.urls["local_path"], filename),
+                           destination=os.path.join(relative_subfolder, filename))# it works like this ../PROJECT/ "collab/filename"
+            print(" - Uploaded file", filename)
+
+    def one_run(self, steps):
+        if len(executable) == 0:
+            print("No instructions to execute")
+            return
+
+        #Executing a job
+        job = self.createJob(list_of_steps=executable,job_args={})
+        cmd_job, result_job = self.__run_job(job)
+        return result_job
+
+    #experiment_name is "lfl-fun-ga-py"
+    #experiment.sh call "python experiment_name"
+    def run_flow_L2L(self,experiment_name, filesToUpload=[], setIntallation=False):
+        try:
+            start_time = time.time()
+
+            print("Connected to", str(self.env.conn_info["serverToConnect"]) + "!")
+            parent_project = self.env.urls["destiny_parent_project"]
+            if setIntallation:
+                # Create & Upload installation.sh in the server
+                filename, steps =  Utils.generate_L2L_installation(variables=self.env.urls)
+                self.__uploadFiles([filename],
+                                   server_point="PROJECT",
+                                   relative_subfolder=parent_project) #wikicollab
+
+                # Launch the installation.sh in the server
+                job = self.createJob(list_of_steps=steps, job_args={})
+                cmd_job, result_job = self.__run_job(job)
+
+
+            # Create launcher.py., it will call the experiment i.e."python l2l-fun-ga.py"
+            launcher_file, steps = Utils.generate_L2L_launcher(variables=self.env.urls,
+                                                            launcher=experiment_name)#relative_subfolder="collab/L2L/bin"
+            #To upload for example: launcher.sh, experiment.py and optimizee.py
+            filesToUpload.append(launcher_file)
+            self.__uploadFiles(filesToUpload,
+                               server_point="PROJECT",
+                               relative_subfolder=os.path.join(parent_project, self.env.urls["destiny_relative_subfolder"]))
+
+            #run experiment
+            # Launch the installation.sh in the server
+            job = self.createJob(list_of_steps=steps, job_args={})
+            cmd_job, result_job = self.__run_job(job)
+
+            print("Flow time --- %s seconds ---" % round(time.time() - start_time,3))
+            return result_job
+        except Exception as e:
+            print("General error in run_flow_L2L", e)
+
+
 
 ################
+
 """
 Exmaple: Stand
-env = Environment_UNICORE(token="cGVyZXptYXJ0aW4xOmFwbUAzMDQwNTA",
+env = Environment_UNICORE(token=mytoken,
                  serverToConnect="https://zam2125.zam.kfa-juelich.de:9112/JUSUF/rest/core/",
                  local_path=os.path.join(os.environ['HOME'], "temp_PyUnicore"),
                  destiny_working_path="perezmartin1/cmdstan/scripts",
@@ -244,8 +353,9 @@ result = py.run()
 print(result)
 """
 
-# Single job + results
-env = Environment_UNICORE(token="cGVyZXptYXJ0aW4xOmFwbUAzMDQwNTA",
+"""
+# Exmaple: Python
+env = Environment_UNICORE(token=mytoken,
                  serverToConnect="https://zam2125.zam.kfa-juelich.de:9112/JUSUF/rest/core/",
                  local_path=os.path.join(os.environ['HOME'], "temp_PyUnicore"),
                  destiny_working_path="./",
@@ -255,5 +365,40 @@ env = Environment_UNICORE(token="cGVyZXptYXJ0aW4xOmFwbUAzMDQwNTA",
 py = PyUnicoreManager(environment = env)
 file = os.path.join(os.environ['HOME'], "temp_PyUnicore","test.py")
 result = py.one_run(executable=["cd /p/project/cslns/collab; ls -l >> text; echo done"],filesToUpload=[])
+print(result)
+"""
+
+
+"""Notes:
+"destiny_project_path" is used for installation
+"destiny_relative_subfolder" is used to uploadfiles inside of the project and run scripts there
+"""
+mytoken =""
+env = Environment_UNICORE(token=mytoken,
+                 methodToAccess= Utils.ACCESS_JUDOOR,
+                 serverToConnect="JUSUF",
+                 serverArgs={ 'Resources': {"Nodes" : "1","Runtime" : "10"},
+                              'jobType': "interactive"},
+                 local_path=os.path.join(os.environ['HOME'], "temp_PyUnicore"),
+                 destiny_project_path="/p/project/cslns/collab",
+                 destiny_relative_subfolder="L2L/bin")
+py = PyUnicoreManager(environment = env, verbose=True)
+
+#Single job
+#result = py.one_run(steps="cd /p/project/cslns/collab;ls -l >> text;echo done!")
+
+#L2L job flow
+#Write your optimizee & store it
+optimizee = os.path.join(os.environ['HOME'], "temp_PyUnicore","myoptimizee.py")
+optzee_path, optzee_filename = os.path.split(optimizee)
+
+
+#write your experiment
+# call an external optimizee or internal of L2L
+experiment_name = "l2l-fun-ga.py"
+
+result = py.run_flow_L2L(experiment_name=experiment_name,
+                         filesToUpload=[optzee_filename],
+                         setIntallation=True)# First time "setIntallation" is mandatory
 print(result)
 
