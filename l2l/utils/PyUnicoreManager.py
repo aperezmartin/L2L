@@ -287,12 +287,12 @@ class PyUnicoreManager(object):
             print(" - Downloaded file", filename)
 
     def one_run(self, steps):
-        if len(executable) == 0:
+        if len(steps) == 0:
             print("No instructions to execute")
             return
 
         #Executing a job
-        job = self.createJob(list_of_steps=executable,job_args={})
+        job = self.createJob(list_of_steps=steps,job_args={})
         cmd_job, result_job = self.__run_job(job)
         return result_job
 
@@ -380,7 +380,7 @@ print(result)
 "destiny_relative_subfolder" is used to uploadfiles inside of the project and run scripts there
 """
 
-""" 
+"""
 #Example: to place it into Collab
 mytoken = ""
 env = Environment_UNICORE(token=mytoken,
@@ -393,10 +393,12 @@ env = Environment_UNICORE(token=mytoken,
                  destiny_project_path="/p/project/cslns/collab",
 
                  destiny_relative_subfolder="L2L/bin")
-py = PyUnicoreManager(environment = env, verbose=False)
+py = PyUnicoreManager(environment = env, verbose=True)
 
 #Single job
-#result = py.one_run(steps="cd /p/project/cslns/collab;ls -l >> text;echo done!")
+result = py.one_run(steps="cd /p/project/cslns/collab;date >> text;cat text")
+for line in result["stdout"]:
+    print(line)
 
 #L2L job flow
 #Write your optimizee & store it
