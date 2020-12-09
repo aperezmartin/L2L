@@ -37,7 +37,7 @@ class Utils():
             with open(os.path.join(variables["local_path"], filename), 'w') as file:
                 file.write(
                 'cd ' + new_local_path + ";"
-                'python '+ launcher +' 2>stderr.log$(date "+%Y%m%d") 1>stdout.log$(date "+%Y%m%d") ;\n')
+                'python '+ launcher +' 2>experiment_stderr$(date "+%Y%m%d") 1>experiment_stdout$(date "+%Y%m%d") ;\n')
 #                'cd L2L/bin ;\n' +
             # Steps to launch the script
             steps = Utils.arrayToString([" cd " +new_local_path+";",
@@ -60,13 +60,13 @@ class Utils():
                 file.write('#!/bin/bash \n' +
                     'git clone https://github.com/aperezmartin/L2L.git ; \n' +
                     'cd L2L ;\n' +
-                    'pip3 install -r requirements.txt ;\n' +
-                    'pip3 install http://apps.fz-juelich.de/jsc/jube/jube2/download.php?version=latest ;\n' +
-                    'python setup.py install ;\n' +
+                    'io_err=installation_stderr$(date "+%Y%m%d"); io_out=installation_stdout$(date "+%Y%m%d");'
+                    'pip3 install -r requirements.txt --user 2>$io_err 1>$io_out;\n' +
+                    'pip3 install http://apps.fz-juelich.de/jsc/jube/jube2/download.php?version=latest --user 2>$io_err 1>$io_out;\n' +
+                    'python3 setup.py install --user 2>$io_err 1>$io_out;\n' +
                     'today=$(date "+%Y-%m-%d %H:%M:%S") ;\n'+
-                    'cd .. ;\n' +
-                    'echo "$today - '+filename+' finished successfully! " >> control.log$(date "+%Y%m%d") ;\n'+
-                    '2>stderr.log$(date "+%Y%m%d") 1>stdout.log$(date "+%Y%m%d")')
+                    '/bin/rm -f '+filename+' 2>$io_err 1>$io_out;\n' +
+                    'echo "$today - '+filename+' finished successfully! " >> installation_control$(date "+%Y%m%d") ;\n')
 
             # Steps to launch the script
             steps = Utils.generate_steps_bashscript(variables, filename)
@@ -146,6 +146,7 @@ class Environment_UNICORE():
         self.urls["destiny_project_path"] = destiny_project_path
         self.urls["destiny_relative_subfolder"] = destiny_relative_subfolder
         self.urls["destiny_parent_project"] = self.urls["destiny_project_path"].split('/')[-1]
+        self.urls["destiny_server_endpoint"] = args["destiny_server_endpoint"] if "destiny_server_endpoint" in args.keys() else None
         self.urls["destiny_libraries_path"] = args["destiny_libraries_path"] if "destiny_libraries_path" in args.keys() else None
 
         # Parameter for the Job execution
@@ -165,6 +166,12 @@ class PyUnicoreManager(object):
         self.registry = unicore_client.Registry(self.transport, self.env.conn_info["serverToRegister"])
         self.site = self.registry.site(self.env.conn_info["serverToConnect"])
         self.client = unicore_client.Client(self.transport, self.site.site_url)
+
+        # Get the object Storage
+        for obj in self.site.get_storages():
+            if obj.storage_url.endswith(self.env.urls["destiny_server_endpoint"]):
+                self.storage = obj
+                break
 
         if self.env.conn_info["token"] is None:
             print("Token is required!")
@@ -256,29 +263,28 @@ class PyUnicoreManager(object):
         result_job["stdout"] = [x.decode('utf8') for x in wd.stat("/stdout").raw().readlines()]
         return cmd_job, result_job
 
-    def __uploadFiles(self, filesToUpload, server_point, relative_subfolder):
-
-        #Check if all files can be reacheabled
-        list=[]
-        for filename in filesToUpload:
-            list.append(os.path.join(self.env.urls["local_path"], filename))
-        if len(list)==0:
+    def __uploadFiles(self, filesToUpload, relative_subfolder):
+        if len(filesToUpload) == 0:
             raise "Nothing to upload"
 
-        #Get the object Storage
-        storage=None
-        for obj in self.site.get_storages():
-            if obj.storage_url.endswith(server_point):
-                storage= obj
-
         # Uploading files
-        print("Uploading to ", storage.storage_url)
+        print("Uploading to ", self.storage.storage_url)
 
         #destination="collab/filename"
         for filename in filesToUpload:
-            storage.upload(os.path.join(self.env.urls["local_path"], filename),
+            self.storage.upload(os.path.join(self.env.urls["local_path"], filename),
                            destination=os.path.join(relative_subfolder, filename))# it works like this ../PROJECT/ "collab/filename"
             print(" - Uploaded file", filename)
+
+    def __download(self, filesToDownload, relative_subfolder):
+        if len(filesToDownload) == 0:
+            raise "Nothing to download"
+
+        print("Downloading from ", self.storage.storage_url)
+        for filename in filesToDownload:
+            remote = self.storage.stat(os.path.join(relative_subfolder,filename))# it works like this ../PROJECT/ "collab/filename"
+            remote.download(os.path.join(self.env.urls["local_path"],filename))
+            print(" - Downloaded file", filename)
 
     def one_run(self, steps):
         if len(executable) == 0:
@@ -292,7 +298,7 @@ class PyUnicoreManager(object):
 
     #experiment_name is "lfl-fun-ga-py"
     #experiment.sh call "python experiment_name"
-    def run_flow_L2L(self,experiment_name, filesToUpload=[], setIntallation=False):
+    def run_flow_L2L(self,experiment_name, filesToUpload=[],filesToDownload=[], setIntallation=False):
         try:
             start_time = time.time()
 
@@ -302,7 +308,6 @@ class PyUnicoreManager(object):
                 # Create & Upload installation.sh in the server
                 filename, steps =  Utils.generate_L2L_installation(variables=self.env.urls)
                 self.__uploadFiles([filename],
-                                   server_point="PROJECT",
                                    relative_subfolder=parent_project) #wikicollab
 
                 # Launch the installation.sh in the server
@@ -316,7 +321,6 @@ class PyUnicoreManager(object):
             #To upload for example: launcher.sh, experiment.py and optimizee.py
             filesToUpload.append(launcher_file)
             self.__uploadFiles(filesToUpload,
-                               server_point="PROJECT",
                                relative_subfolder=os.path.join(parent_project, self.env.urls["destiny_relative_subfolder"]))
 
             #run experiment
@@ -324,12 +328,14 @@ class PyUnicoreManager(object):
             job = self.createJob(list_of_steps=steps, job_args={})
             cmd_job, result_job = self.__run_job(job)
 
+            #Download
+            self.__download(filesToDownload,
+                               relative_subfolder=os.path.join(parent_project,
+                                                               self.env.urls["destiny_relative_subfolder"]))
             print("Flow time --- %s seconds ---" % round(time.time() - start_time,3))
             return result_job
         except Exception as e:
             print("General error in run_flow_L2L", e)
-
-
 
 ################
 
@@ -373,16 +379,21 @@ print(result)
 "destiny_project_path" is used for installation
 "destiny_relative_subfolder" is used to uploadfiles inside of the project and run scripts there
 """
-mytoken =""
+
+"""
+#Example: to place it into Collab
+mytoken = ""
 env = Environment_UNICORE(token=mytoken,
                  methodToAccess= Utils.ACCESS_JUDOOR,
                  serverToConnect="JUSUF",
+                 destiny_server_endpoint="PROJECT",
                  serverArgs={ 'Resources': {"Nodes" : "1","Runtime" : "10"},
                               'jobType': "interactive"},
                  local_path=os.path.join(os.environ['HOME'], "temp_PyUnicore"),
                  destiny_project_path="/p/project/cslns/collab",
+
                  destiny_relative_subfolder="L2L/bin")
-py = PyUnicoreManager(environment = env, verbose=True)
+py = PyUnicoreManager(environment = env, verbose=False)
 
 #Single job
 #result = py.one_run(steps="cd /p/project/cslns/collab;ls -l >> text;echo done!")
@@ -397,8 +408,9 @@ optzee_path, optzee_filename = os.path.split(optimizee)
 # call an external optimizee or internal of L2L
 experiment_name = "l2l-fun-ga.py"
 
-result = py.run_flow_L2L(experiment_name=experiment_name,
+job_result = py.run_flow_L2L(experiment_name=experiment_name,
                          filesToUpload=[optzee_filename],
+                         filesToDownload=["experiment_stderr20201209","experiment_stdout20201209"],
                          setIntallation=True)# First time "setIntallation" is mandatory
-print(result)
-
+print(job_result)
+"""
