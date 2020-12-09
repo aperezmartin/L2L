@@ -247,10 +247,11 @@ class PyUnicoreManager(object):
 
     def __run_job(self,job):
         cmd_job = None
-        if Utils.ACCESS_JUDOOR == self.env.conn_info["methodToAccess"]:
-            cmd_job = self.client.new_job(job_description=job)#, inputs=filesToUpload
-        elif Utils.ACCESS_COLLAB == self.env.conn_info["methodToAccess"]:
-            cmd_job = self.site.new_job(job_description=job)#, inputs=filesToUpload
+        #if Utils.ACCESS_JUDOOR == self.env.conn_info["methodToAccess"]:
+        #
+        #elif Utils.ACCESS_COLLAB == self.env.conn_info["methodToAccess"]:
+        #    cmd_job = self.site.new_job(job_description=job)#, inputs=filesToUpload
+        cmd_job = self.client.new_job(job_description=job)
 
         # Wait until the job finishes
         print("Status...", cmd_job.properties['status'])
