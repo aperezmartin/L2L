@@ -124,7 +124,7 @@ class Utils():
 
 class Environment_UNICORE():
 
-    def __init__(self,token, serverToConnect, local_path,
+    def __init__(self,token,methodToAccess, serverToConnect, local_path,
                  destiny_project_path,destiny_relative_subfolder,
                  **args):
 
@@ -132,6 +132,7 @@ class Environment_UNICORE():
 
         # Required for a sever connection
         self.conn_info["token"] = token
+        self.conn_info["methodToAccess"] = methodToAccess
         self.conn_info["serverToConnect"] = serverToConnect
         if "serverToRegister" in args.keys():
             self.conn_info["serverToRegister"] = args["serverToRegister"]
@@ -161,7 +162,15 @@ class PyUnicoreManager(object):
     def __init__(self, environment, verbose=False,  **keyword_args):
         self.verbose = verbose
         self.env = environment
-        self.transport = unicore_client.Transport(self.env.conn_info["token"])#, oidc=False collab token doesnt work
+
+        #Accesing with JUDOOR or COLLAB token have have different parameters in the PyUnicore.Transport
+        # oidc=False doesnt work with collab token
+        self.transport = None
+        if Utils.ACCESS_JUDOOR == self.env.conn_info["methodToAccess"]:
+            self.transport = unicore_client.Transport(self.env.conn_info["token"], oidc=False)
+        elif Utils.ACCESS_COLLAB == self.env.conn_info["methodToAccess"]:
+            self.transport = unicore_client.Transport(self.env.conn_info["token"])
+
         self.registry = unicore_client.Registry(self.transport, self.env.conn_info["serverToRegister"])
         self.site = self.registry.site(self.env.conn_info["serverToConnect"])
         self.client = unicore_client.Client(self.transport, self.site.site_url)
@@ -379,6 +388,7 @@ print(result)
 #Example: to place it into Collab
 mytoken = ""
 env = Environment_UNICORE(token=mytoken,
+                 methodToAccess= Utils.ACCESS_JUDOOR,
                  serverToConnect="JUSUF",
                  destiny_server_endpoint="PROJECT",
                  serverArgs={ 'Resources': {"Nodes" : "1","Runtime" : "10"},
