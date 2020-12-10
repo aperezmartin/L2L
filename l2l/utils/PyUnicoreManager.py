@@ -124,7 +124,7 @@ class Utils():
 
 class Environment_UNICORE():
 
-    def __init__(self,token,methodToAccess, serverToConnect, local_path,
+    def __init__(self,token, serverToConnect, local_path,
                  destiny_project_path,destiny_relative_subfolder,
                  **args):
 
@@ -132,7 +132,6 @@ class Environment_UNICORE():
 
         # Required for a sever connection
         self.conn_info["token"] = token
-        self.conn_info["methodToAccess"] = methodToAccess
         self.conn_info["serverToConnect"] = serverToConnect
         if "serverToRegister" in args.keys():
             self.conn_info["serverToRegister"] = args["serverToRegister"]
@@ -162,7 +161,7 @@ class PyUnicoreManager(object):
     def __init__(self, environment, verbose=False,  **keyword_args):
         self.verbose = verbose
         self.env = environment
-        self.transport = unicore_client.Transport(self.env.conn_info["token"], oidc=False)
+        self.transport = unicore_client.Transport(self.env.conn_info["token"])#, oidc=False collab token doesnt work
         self.registry = unicore_client.Registry(self.transport, self.env.conn_info["serverToRegister"])
         self.site = self.registry.site(self.env.conn_info["serverToConnect"])
         self.client = unicore_client.Client(self.transport, self.site.site_url)
@@ -246,11 +245,6 @@ class PyUnicoreManager(object):
         """
 
     def __run_job(self,job):
-        cmd_job = None
-        #if Utils.ACCESS_JUDOOR == self.env.conn_info["methodToAccess"]:
-        #
-        #elif Utils.ACCESS_COLLAB == self.env.conn_info["methodToAccess"]:
-        #    cmd_job = self.site.new_job(job_description=job)#, inputs=filesToUpload
         cmd_job = self.client.new_job(job_description=job)
 
         # Wait until the job finishes
@@ -385,7 +379,6 @@ print(result)
 #Example: to place it into Collab
 mytoken = ""
 env = Environment_UNICORE(token=mytoken,
-                 methodToAccess= Utils.ACCESS_JUDOOR,
                  serverToConnect="JUSUF",
                  destiny_server_endpoint="PROJECT",
                  serverArgs={ 'Resources': {"Nodes" : "1","Runtime" : "10"},
