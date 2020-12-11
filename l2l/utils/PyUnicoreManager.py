@@ -338,7 +338,6 @@ class PyUnicoreManager(object):
             job = self.createJob(list_of_steps=steps, job_args={})
             cmd_job, result_job = self.__run_job(job)
 
-            exit(1)
             #Download
             self.__download(filesToDownload,
                                relative_subfolder=os.path.join(parent_project,
