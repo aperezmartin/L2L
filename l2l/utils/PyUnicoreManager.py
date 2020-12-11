@@ -36,15 +36,17 @@ class Utils():
             # What the script does
             with open(os.path.join(variables["local_path"], filename), 'w') as file:
                 file.write(
-                'cd ' + new_local_path + ";"
-                'python '+ launcher +' 2>experiment_stderr$(date "+%Y%m%d") 1>experiment_stdout$(date "+%Y%m%d") ;\n')
+                'cd ' + new_local_path + ';\n'+
+                'source env/bin/activate ;\n' +
+                    'python '+ launcher +' 2>experiment_stderr$(date "+%Y%m%d") 1>experiment_stdout$(date "+%Y%m%d") ;\n'+
+                'deactivate ;\n'+
+                'echo done!')
 #                'cd L2L/bin ;\n' +
             # Steps to launch the script
             steps = Utils.arrayToString([" cd " +new_local_path+";",
                     "chmod 764 " + filename + ";",
                     "bash " + filename + ";",
                     "echo done!"])
-            print(filename,"Steps:",steps)
             return filename, steps
         except Exception as e:
             raise e
@@ -58,15 +60,19 @@ class Utils():
             # What the script does
             with open(os.path.join(variables["local_path"], filename), 'w') as file:
                 file.write('#!/bin/bash \n' +
-                    'git clone https://github.com/aperezmartin/L2L.git ; \n' +
+                    'git clone https://github.com/aperezmartin/L2L.git ; \n'+
                     'cd L2L ;\n' +
-                    'io_err=installation_stderr$(date "+%Y%m%d"); io_out=installation_stdout$(date "+%Y%m%d");'
-                    'pip3 install -r requirements.txt --user 2>$io_err 1>$io_out;\n' +
-                    'pip3 install http://apps.fz-juelich.de/jsc/jube/jube2/download.php?version=latest --user 2>$io_err 1>$io_out;\n' +
-                    'python3 setup.py install --user 2>$io_err 1>$io_out;\n' +
+                    'io_err=installation_stderr$(date "+%Y%m%d"); io_out=installation_stdout$(date "+%Y%m%d");'+
+                    'python3 -m venv env;\n' +
+                    'source env/bin/activate ;\n' +
+                        'pip3 install -r requirements.txt 2>$io_err 1>$io_out;\n'+
+                        'pip3 install http://apps.fz-juelich.de/jsc/jube/jube2/download.php?version=latest 2>$io_err 1>$io_out;\n'+
+                        'python3 setup.py install 2>$io_err 1>$io_out;\n'+
+                    'deactivate ;\n' +
                     'today=$(date "+%Y-%m-%d %H:%M:%S") ;\n'+
-                    '/bin/rm -f '+filename+' 2>$io_err 1>$io_out;\n' +
-                    'echo "$today - '+filename+' finished successfully! " >> installation_control$(date "+%Y%m%d") ;\n')
+                    '/bin/rm -f '+filename+' 2>$io_err 1>$io_out;\n'+
+                    'echo "$today - '+filename+' finished successfully! " >> installation_control$(date "+%Y%m%d") ;\n'+
+                    'echo done!')
 
             # Steps to launch the script
             steps = Utils.generate_steps_bashscript(variables, filename)
@@ -257,7 +263,7 @@ class PyUnicoreManager(object):
         cmd_job = self.client.new_job(job_description=job)
 
         # Wait until the job finishes
-        print("Status...", cmd_job.properties['status'])
+        print("Job status...", cmd_job.properties['status'])
         cmd_job.poll()
         print('Job finished!')
 
@@ -318,10 +324,10 @@ class PyUnicoreManager(object):
                 job = self.createJob(list_of_steps=steps, job_args={})
                 cmd_job, result_job = self.__run_job(job)
 
-
             # Create launcher.py., it will call the experiment i.e."python l2l-fun-ga.py"
             launcher_file, steps = Utils.generate_L2L_launcher(variables=self.env.urls,
                                                             launcher=experiment_name)#relative_subfolder="collab/L2L/bin"
+
             #To upload for example: launcher.sh, experiment.py and optimizee.py
             filesToUpload.append(launcher_file)
             self.__uploadFiles(filesToUpload,
@@ -332,6 +338,7 @@ class PyUnicoreManager(object):
             job = self.createJob(list_of_steps=steps, job_args={})
             cmd_job, result_job = self.__run_job(job)
 
+            exit(1)
             #Download
             self.__download(filesToDownload,
                                relative_subfolder=os.path.join(parent_project,
@@ -395,14 +402,13 @@ env = Environment_UNICORE(token=mytoken,
                               'jobType': "interactive"},
                  local_path=os.path.join(os.environ['HOME'], "temp_PyUnicore"),
                  destiny_project_path="/p/project/cslns/collab",
-
                  destiny_relative_subfolder="L2L/bin")
-py = PyUnicoreManager(environment = env, verbose=True)
+py = PyUnicoreManager(environment = env, verbose=False)
 
 #Single job
-result = py.one_run(steps="cd /p/project/cslns/collab;date >> text;cat text")
-for line in result["stdout"]:
-    print(line)
+#result = py.one_run(steps="cd /p/project/cslns/collab;date >> text;cat text")
+#for line in result["stdout"]:
+#    print(line)
 
 #L2L job flow
 #Write your optimizee & store it
