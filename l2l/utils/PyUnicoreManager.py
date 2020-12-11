@@ -38,7 +38,7 @@ class Utils():
                 file.write(
                 'cd L2L ;\n' +
                 'source env/bin/activate ;\n' +
-                    'python bin/'+ launcher +' 2>experiment_stderr$(date "+%Y%m%d") 1>experiment_stdout$(date "+%Y%m%d") ;\n'+
+                    'python /p/project/cslns/collab/L2L/bin/'+ launcher +' 2>experiment_stderr$(date "+%Y%m%d") 1>experiment_stdout$(date "+%Y%m%d") ;\n'+
                 'deactivate ;\n'+
                 'echo done!')
 #                'cd L2L/bin ;\n' +
