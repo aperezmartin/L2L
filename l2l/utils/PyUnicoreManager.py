@@ -6,10 +6,6 @@ import os, time, logging
 from enum import Enum
 import logging.config
 
-from l2l.logging_tools import create_shared_logger_data, configure_loggers
-from l2l.paths import Paths
-from l2l.utils.trajectory import Trajectory
-
 logger = logging.getLogger("utils.Environment_UNICORE")
 
 class Utils():
@@ -36,16 +32,16 @@ class Utils():
             # What the script does
             with open(os.path.join(variables["local_path"], filename), 'w') as file:
                 file.write(
-                'cd L2L ;\n' +
-                'source env/bin/activate ;\n' +
-                    'python /p/project/cslns/collab/L2L/bin/'+ launcher +' 2>experiment_stderr$(date "+%Y%m%d") 1>experiment_stdout$(date "+%Y%m%d") ;\n'+
-                'deactivate ;\n'+
+                'cd /p/project/cslns/collab/L2L \n' +
+                'source env/bin/activate \n' +
+                    'python /p/project/cslns/collab/L2L/bin/'+ launcher +' 2>experiment_stderr$(date "+%Y%m%d") 1>experiment_stdout$(date "+%Y%m%d") \n'+
+                'deactivate \n'+
                 'echo done!')
 #                'cd L2L/bin ;\n' +
             # Steps to launch the script
-            steps = Utils.arrayToString([" cd " +new_local_path+";",
-                    "chmod 764 " + filename + ";",
-                    "bash " + filename + ";",
+            steps = Utils.arrayToString([" cd " +new_local_path+"\n",
+                    "chmod 764 " + filename + "\n",
+                    "bash " + filename + "\n",
                     "echo done!"])
             return filename, steps
         except Exception as e:
@@ -60,18 +56,18 @@ class Utils():
             # What the script does
             with open(os.path.join(variables["local_path"], filename), 'w') as file:
                 file.write('#!/bin/bash \n' +
-                    'git clone https://github.com/aperezmartin/L2L.git ; \n'+
-                    'cd L2L ;\n' +
-                    'io_err=installation_stderr$(date "+%Y%m%d"); io_out=installation_stdout$(date "+%Y%m%d");'+
-                    'python3 -m venv env;\n' +
+                    'git clone https://github.com/aperezmartin/L2L.git  \n'+
+                    'cd L2L \n' +
+                    'io_err=installation_stderr$(date "+%Y%m%d"); io_out=installation_stdout$(date "+%Y%m%d") \n'+
+                    'python3 -m venv env \n' +
                     'source env/bin/activate ;\n' +
-                        'pip3 install -r requirements.txt 2>$io_err 1>$io_out;\n'+
-                        'pip3 install http://apps.fz-juelich.de/jsc/jube/jube2/download.php?version=latest 2>$io_err 1>$io_out;\n'+
-                        'python3 setup.py install 2>$io_err 1>$io_out;\n'+
-                    'deactivate ;\n' +
-                    'today=$(date "+%Y-%m-%d %H:%M:%S") ;\n'+
-                    '/bin/rm -f '+filename+' 2>$io_err 1>$io_out;\n'+
-                    'echo "$today - '+filename+' finished successfully! " >> installation_control$(date "+%Y%m%d") ;\n'+
+                        'pip3 install -r requirements.txt 2>$io_err 1>$io_out \n'+
+                        'pip3 install http://apps.fz-juelich.de/jsc/jube/jube2/download.php?version=latest 2>$io_err 1>$io_out \n'+
+                        'python3 setup.py install 2>$io_err 1>$io_out \n'+
+                    'deactivate  \n' +
+                    'today=$(date "+%Y-%m-%d %H:%M:%S")  \n'+
+                    '/bin/rm -f '+filename+' 2>$io_err 1>$io_out \n'+
+                    'echo "$today - '+filename+' finished successfully! " >> installation_control$(date "+%Y%m%d")  \n'+
                     'echo done!')
 
             # Steps to launch the script
@@ -123,9 +119,9 @@ class Utils():
 
     @staticmethod
     def generate_steps_bashscript(variables, filename):
-        return Utils.arrayToString([" cd " + variables["destiny_project_path"] + ";",
-                    "chmod 764 " + filename + ";",
-                    "bash " + filename + ";",
+        return Utils.arrayToString([" cd " + variables["destiny_project_path"] + "\n",
+                    "chmod 764 " + filename + "\n",
+                    "bash " + filename + "\n",
                     "echo done!"])
 
 class Environment_UNICORE():
