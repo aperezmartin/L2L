@@ -1,3 +1,5 @@
+import time
+
 from l2l.utils.trajectory import Trajectory
 from l2l.utils.JUBE_runner import JUBERunner
 import logging
@@ -25,7 +27,7 @@ class Environment:
         if 'filename' in keyword_args:
             self.filename = keyword_args['filename']
         self.postprocessing = None
-        self.multiprocessing = True
+        self.multiprocessing = False#We don't use Jube
         if 'multiprocessing' in keyword_args:
             self.multiprocessing = keyword_args['multiprocessing']
         self.run_id = 0
@@ -38,10 +40,14 @@ class Environment:
         :return: the results of running a whole generation. Dictionary indexed by generation id.
         """
         result = {}
+        start_outer = time.time()
         for it in range(self.trajectory.par['n_iteration']):
+            start_it = time.time()
+            print("---multiprocessing---", self.multiprocessing)
             if self.multiprocessing:
                 # Multiprocessing is done through JUBE, either with or without scheduler
                 logging.info("Environment run starting JUBERunner for n iterations: " + str(self.trajectory.par['n_iteration']))
+                start = time.time()
                 jube = JUBERunner(self.trajectory)
                 result[it] = []
                 # Initialize new JUBE run and execute it
@@ -52,6 +58,7 @@ class Environment:
                     if self.logging:
                         logger.exception("Error launching JUBE run: " + str(e.__cause__))
                     raise e
+
 
             else:
                 # Sequential calls to the runfunc in the optimizee
@@ -66,11 +73,16 @@ class Environment:
                     if self.logging:
                         logger.exception("Error during serial execution of individuals")
                     raise
+            print("- optimizee simulation:", it, ", in ", round(time.time() - start_it, 6), "segs")
             # Add results to the trajectory
+            start_postProc = time.time()
             self.trajectory.results.f_add_result_to_group("all_results", it, result[it])
             self.trajectory.current_results = result[it]
             # Perform the postprocessing step in order to generate the new parameter set
             self.postprocessing(self.trajectory, result[it])
+            print("- postprocessing:",it ,", in ",round(time.time() - start_postProc, 6), "segs")
+            print("")
+        print("- Outerloop: in ", round(time.time() - start_outer, 6), "segs")
 
         return result
 

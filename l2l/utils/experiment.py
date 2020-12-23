@@ -84,7 +84,7 @@ class Experiment(object):
             add_time=True,
             automatic_storing=True,
             log_stdout=kwargs.get('log_stdout', False),  # Sends stdout to logs
-            multiprocessing=kwargs.get('multiprocessing', True)
+            multiprocessing=kwargs.get('multiprocessing', False)
         )
 
         create_shared_logger_data(
