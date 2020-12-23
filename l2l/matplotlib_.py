@@ -15,7 +15,8 @@ with warnings.catch_warnings():
     # matplotlib.use('qt4agg')
     # matplotlib.use('tkagg')
     # matplotlib.use('svg')
-    matplotlib.use('agg')
+    # matplotlib.use('agg')
+    matplotlib.use('template')
     import matplotlib.pyplot as plt_
 
     plt = plt_
